@@ -1,107 +1,243 @@
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
 from dag_env import DAGEnv
 
 
 def encode_obs(obs: Dict[str, Any]) -> np.ndarray:
-    return np.array([
-        len(obs["graph"]),                 # taille du graphe
-        obs["steps"] / obs["max_steps"],   # progression normalisée
-        1.0 if obs["done"] else 0.0,        # terminal ou pas
-    ], dtype=np.float32)
+    """Encode l'observation en vecteur numérique simple."""
+    max_steps = obs["max_steps"] if obs.get("max_steps", 0) else 1
+    return np.array(
+        [
+            len(obs["graph"]),  # taille du graphe
+            obs["steps"] / max_steps,  # progression normalisée (évite /0)
+            1.0 if obs["done"] else 0.0,  # terminal ou pas
+        ],
+        dtype=np.float32,
+    )
 
 
 class PolicyNetwork(nn.Module):
-    
     def __init__(self, obs_dim: int, act_dim: int, hidden: int = 256):
         super().__init__()
-        
-        # Encodeur
-        self.encodeur = nn.Sequential(
-            nn.Linear(obs_dim,hidden),
+        self.encoder = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
             nn.ReLU(),
-            nn.Sequential(hidden,hidden),
-            nn.ReLU()
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
         )
-        
-        self.policy_head = nn.linear(hidden,act_dim)
-        
-        def forward(self, obs: torch.Tensor) -> torch.Tensor :
-            encoded = self.encodeur(obs)
-            action_logits = self.policy_head(encoded)
-            return action_logits
-        
+        self.policy_head = nn.Linear(hidden, act_dim)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(obs)
+        return self.policy_head(encoded)
+
+
 class ValueNetwork(nn.Module):
     def __init__(self, obs_dim: int, hidden: int = 256):
         super().__init__()
-        
         self.network = nn.Sequential(
-            nn.linear(obs_dim,hidden),
+            nn.Linear(obs_dim, hidden),
             nn.ReLU(),
-            nn.linear(hidden,hidden),
+            nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.linear(hidden,1)
+            nn.Linear(hidden, 1),
         )
-        
-        def forward(self, obs: torch.Tensor) -> torch.Tensor : 
-            return self.network(obs)
 
-class AgentPPO :
-    
-    def __init__(self, env: DAGEnv, lr: float, gae_lambda: float, eps_clip: float, entropy_coef: float) :
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.network(obs)
+
+
+class AgentPPO:
+    def __init__(self, env: DAGEnv, lr: float, gae_lambda: float, eps_clip: float, entropy_coef: float, gamma: float = 0.99,):
         
-    #peut etre des hyper param à implementer env lr
+        # hyperparamètres
         self.env = env
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
         self.lr = lr
+        self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.eps_clip = eps_clip
         self.entropy_coef = entropy_coef
-        
-        # On prends les NNs
+        self.action_labels = ["CODER", "TESTER", "STOP"]
+        if len(self.action_labels) != env.act_dim:
+            raise ValueError("Le nombre d'actions ne correspond pas à env.act_dim.")
+
+        # réseaux
         self.policy_network = PolicyNetwork(env.obs_dim, env.act_dim).to(self.device)
         self.value_network = ValueNetwork(env.obs_dim).to(self.device)
-        
-        # Leur optimiseurs
-        self.policy_optimizer = optim.Adam(self.policy_network.parameters(),lr=lr)
-        self.value_optimizer = optim.Adam(self.value_network.parameters(),lr=lr)
-        
-        
-        def select_action(self, state: int, training: bool):
-            
-            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
-            with torch.no_grad():
-                
-                action_logits = self.policy_network(state_tensor)
-                
-                action_dist = torch.distributions.Categorical(logits=action_logits) # distribution des actions possibles, c'est la loi en gros
-                
-                state_value = self.value_network(state_tensor)
-                
-                if training :
-                    action = action_dist.sample()
-                else:
-                    action = torch.argmax(action_dist.probs) #action_dist.probs renvoie la proba de chaque action
-                
-                log_prob = action_dist.log_prob(action)
-                
-                # .item() sert à convertir un tensor 0-D en float
-                return action.item(), state_value.item(), log_prob.item() 
-            
-        def store_transition(self, state, action, reward, value, log_prob, done):
+        # optimiseurs
+        self.policy_optimizer = optim.Adam(self.policy_network.parameters(), lr=lr)
+        self.value_optimizer = optim.Adam(self.value_network.parameters(), lr=lr)
 
-            self.states.append(state)
-            self.actions.append(action)
-            self.rewards.append(reward)
-            self.values.append(value)
-            self.log_prob.append(log_prob)
-            self.dones.append(done)
-                    
-        def update_policy(self, epochs: int, batch_size: int = 64):
+        # buffers de trajectoire
+        self.states: List[np.ndarray] = []
+        self.actions: List[int] = []
+        self.rewards: List[float] = []
+        self.values: List[float] = []
+        self.log_probs: List[float] = []
+        self.dones: List[bool] = []
+
+    def select_action(self, state: np.ndarray, training: bool) -> Tuple[int, float, float]:
+        
+        state_tensor = (torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0))
+        
+        with torch.no_grad():
             
+            action_logits = self.policy_network(state_tensor)
+            action_dist = torch.distributions.Categorical(logits=action_logits)
+            state_value = self.value_network(state_tensor)
+
+            if training:
+                action = action_dist.sample()
+            else:
+                action = torch.argmax(action_dist.probs)
+
+            log_prob = action_dist.log_prob(action)
+
+        return action.item(), state_value.item(), log_prob.item()
+
+    def store_transition(self, state: np.ndarray, action: int, reward: float, value: float, log_prob: float, done: bool) -> None:
+        
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.values.append(value)
+        self.log_probs.append(log_prob)
+        self.dones.append(done)
+
+    def compute_gae(self, rewards: List[float], values: List[float], dones: List[bool], next_value: float = 0.0, gamma: float | None = None, gae_lambda: float | None = None,) -> Tuple[List[float], List[float]]:
+        """
+        Calcule les avantages et les retours avec Generalized Advantage Estimation.
+        Retourne (advantages, returns).
+        """
+        gamma = self.gamma if gamma is None else gamma
+        lam = self.gae_lambda if gae_lambda is None else gae_lambda
+
+        advantages: List[float] = []
+        gae = 0.0
+        # on ajoute une valeur de bootstrap pour v_{t+1}
+        values_ext = values + [next_value]
+
+        for t in reversed(range(len(rewards))):
+            mask = 1.0 - float(dones[t])
+            delta = rewards[t] + gamma * values_ext[t + 1] * mask - values_ext[t]
+            gae = delta + gamma * lam * mask * gae
+            advantages.insert(0, gae)
+
+        returns = [a + v for a, v in zip(advantages, values_ext[:-1])]
+        return advantages, returns
+
+    def update_policy(self, epochs: int, batch_size: int = 64) -> None:
+        
+        if len(self.states) == 0:
+            return
+        
+        # sécurités anti-NaN
+        states_tensor = torch.as_tensor(np.array(self.states), dtype=torch.float32, device=self.device)
+        if not torch.isfinite(states_tensor).all():
+            # on jette le batch corrompu pour éviter de propager des NaN
+            self.states.clear()
+            self.actions.clear()
+            self.rewards.clear()
+            self.values.clear()
+            self.log_probs.clear()
+            self.dones.clear()
+            return
+        
+        # bootstrap pour le dernier état si non terminal
+        with torch.no_grad():
+            if self.dones and not self.dones[-1]:
+                last_state = torch.as_tensor(self.states[-1], dtype=torch.float32, device=self.device).unsqueeze(0)
+                next_value = self.value_network(last_state).item()
+            else:
+                next_value = 0.0
+        
+        # Calcul des avantages et returns
+        
+        advantages, returns = self.compute_gae(self.rewards, self.values, self.dones, next_value=next_value)
+        
+        # Boucle ppo
+        actions_tensor = torch.as_tensor(self.actions, dtype=torch.long, device=self.device)
+        old_log_probs_tensor = torch.as_tensor(self.log_probs, dtype=torch.float32, device=self.device)
+        advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32, device=self.device)
+        returns_tensor = torch.as_tensor(returns, dtype=torch.float32, device=self.device)
+        
+        # on normalise l'avantage pour la stabilisation
+        advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
+        
+        for epoch in range(epochs):
+            for start in range(0, len(states_tensor), batch_size):
+                end = start + batch_size
+                
+                batch_states = states_tensor[start:end]
+                batch_actions = actions_tensor[start:end]
+                batch_old_log_probs = old_log_probs_tensor[start:end]
+                batch_advantages = advantages_tensor[start:end]
+                batch_returns = returns_tensor[start:end]
+                
+                # forward policy
+                logits = self.policy_network(batch_states)
+                dist = torch.distributions.Categorical(logits=logits)
+                new_log_probs = dist.log_prob(batch_actions)
+                entropy = dist.entropy().mean()
+                
+                ratios = torch.exp(new_log_probs - batch_old_log_probs)
+                surr1 = ratios * batch_advantages
+                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * batch_advantages
+                policy_loss = -torch.min(surr1, surr2).mean()
+                
+                # value loss
+                values_pred = self.value_network(batch_states).squeeze(-1)
+                value_loss = nn.functional.mse_loss(values_pred, batch_returns)
+                
+                loss = policy_loss + 0.5 * value_loss - self.entropy_coef * entropy
+                
+                self.policy_optimizer.zero_grad()
+                self.value_optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), max_norm=1.0)
+                self.policy_optimizer.step()
+                self.value_optimizer.step()
+        
+        # clear buffers
+        self.states.clear()
+        self.actions.clear()
+        self.rewards.clear()
+        self.values.clear()
+        self.log_probs.clear()
+        self.dones.clear()
+
+
+def run_training(env: DAGEnv, agent: AgentPPO, episodes: int, rollout_length: int, update_epochs: int, batch_size: int = 64) -> List[float]:
+    """Boucle d'entraînement simple."""
+    rewards_history: List[float] = []
+    for _ in range(episodes):
+        obs = env.reset()
+        state = encode_obs(obs)
+        episode_reward = 0.0
+
+        for _ in range(rollout_length):
+            action_idx, value, log_prob = agent.select_action(state, training=True)
+            action_label = agent.action_labels[action_idx]
+            next_obs, reward, done, _ = env.step(action_label)
+
+            agent.store_transition(state, action_idx, reward, value, log_prob, done)
+
+            episode_reward += reward
+            state = encode_obs(next_obs)
+            if done:
+                break
+
+        agent.update_policy(update_epochs, batch_size=batch_size)
+
+        rewards_history.append(episode_reward)
+
+    return rewards_history

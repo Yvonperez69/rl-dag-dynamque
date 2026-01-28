@@ -15,6 +15,10 @@ class DAGEnv:
         self.steps = 0
         self.done = False
         self.workdir = workdir
+        
+        self.act_dim = 3 # CODER TESTER STOP
+        
+        self.obs_dim = 3 # 
 
     def reset(self) -> Dict[str, Any]:
 
@@ -80,7 +84,9 @@ class DAGEnv:
 
         if action == "STOP" :
             # On termine et on score l'état actuel
-            succes, log =self.run_pytest()
+            self.done = True
+            self.steps += 1
+            succes, log = self.run_pytest()
             if succes :
                 reward = 1.0
             else:
@@ -113,8 +119,11 @@ class DAGEnv:
             reward = 1.0 - self.step_penalty
         else:
             reward = -1.0 - self.step_penalty
+        self.steps += 1
+        if self.steps >= self.max_steps:
+            self.done = True
         
-        return self._get_observation(), reward, False, {"pytest_passed": succes}
+        return self._get_observation(), reward, self.done, {"pytest_passed": succes}
         
         
         
