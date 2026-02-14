@@ -1,0 +1,113 @@
+[
+  {
+    "task_id": "inference_20260130_161331",
+    "task_description": " voici l'énoncé d'un exo python, génere la solution et un fichier avec des tests unitaires pour tester ta solution : Given a string s, find the length of the longest substring without duplicate characters. voici la signature que la fonction devra avoir def lengthOfLongestSubstring(self, s: str) -> int: ",
+    "optimal_dag": {
+      "nodes": [
+        {
+          "id": 0,
+          "role": "analyst",
+          "action": "validate",
+          "duration": 6,
+          "resources": 1,
+          "priority": "low"
+        },
+        {
+          "id": 1,
+          "role": "developer",
+          "action": "integrate",
+          "duration": 3,
+          "resources": 2,
+          "priority": "low"
+        },
+        {
+          "id": 2,
+          "role": "tester",
+          "action": "review",
+          "duration": 7,
+          "resources": 1,
+          "priority": "high"
+        },
+        {
+          "id": 3,
+          "role": "tester",
+          "action": "test",
+          "duration": 8,
+          "resources": 1,
+          "priority": "medium"
+        },
+        {
+          "id": 4,
+          "role": "developer",
+          "action": "implement",
+          "duration": 8,
+          "resources": 1,
+          "priority": "medium"
+        },
+        {
+          "id": 5,
+          "role": "analyst",
+          "action": "document",
+          "duration": 1,
+          "resources": 3,
+          "priority": "high"
+        },
+        {
+          "id": 6,
+          "role": "developer",
+          "action": "implement",
+          "duration": 8,
+          "resources": 2,
+          "priority": "medium"
+        },
+        {
+          "id": 7,
+          "role": "developer",
+          "action": "implement",
+          "duration": 3,
+          "resources": 3,
+          "priority": "high"
+        }
+      ],
+      "edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          7
+        ]
+      ]
+    },
+    "quality_score": 0.6604438829910746,
+    "metrics_scores": {
+      "structural": 1.0,
+      "efficiency": 0.6217755319642986,
+      "complexity": 0.5750000000000001,
+      "parallelism": 0.1,
+      "redundancy": 0.75
+    },
+    "complexity_level": "unknown"
+  }
+]
