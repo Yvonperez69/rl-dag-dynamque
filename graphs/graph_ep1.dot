@@ -1,0 +1,8 @@
+digraph G {
+  rankdir=LR;
+  start [label="START"];
+  n1 [label="CODER: Here is the modified function that returns a JSON object with the file path and its corresponding content:  ```python..."];
+  start -> n1;
+  end [label="END"];
+  n1 -> end;
+}

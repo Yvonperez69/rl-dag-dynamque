@@ -86,11 +86,16 @@ class AgentPPO:
 
     def select_action(self, state: np.ndarray, training: bool) -> Tuple[int, float, float]:
         
-        state_tensor = (torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0))
+        state_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         
         with torch.no_grad():
             
             action_logits = self.policy_network(state_tensor)
+            
+            if not torch.isfinite(action_logits).all():
+                action = torch.randint(0, action_logits.shape[-1], (1,), device=self.device)
+                return action.item(), 0.0, 0.0
+            
             action_dist = torch.distributions.Categorical(logits=action_logits)
             state_value = self.value_network(state_tensor)
 
@@ -170,7 +175,7 @@ class AgentPPO:
         returns_tensor = torch.as_tensor(returns, dtype=torch.float32, device=self.device)
         
         # on normalise l'avantage pour la stabilisation
-        advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
+        #advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
         
         for epoch in range(epochs):
             for start in range(0, len(states_tensor), batch_size):
@@ -184,6 +189,10 @@ class AgentPPO:
                 
                 # forward policy
                 logits = self.policy_network(batch_states)
+                if not torch.isfinite(logits).all():
+                    # on évite de créer une distribution invalide
+                    print("Nan/Inf détecté dans logits, batch ignoré")
+                    continue
                 dist = torch.distributions.Categorical(logits=logits)
                 new_log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy().mean()
@@ -227,7 +236,7 @@ def run_training(env: DAGEnv, agent: AgentPPO, episodes: int, rollout_length: in
         for _ in range(rollout_length):
             action_idx, value, log_prob = agent.select_action(state, training=True)
             action_label = agent.action_labels[action_idx]
-            next_obs, reward, done, _ = env.step(action_label)
+            next_obs, reward, done, info = env.step(action_label)
 
             agent.store_transition(state, action_idx, reward, value, log_prob, done)
 

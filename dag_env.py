@@ -56,7 +56,7 @@ class DAGEnv:
     {{"files": {{"tests/test_x.py": "file content"}}}}
     """
     
-    def apply_output(output: Dict[str, Any], workspace_dir: str) -> List[str]:
+    def apply_output(self, output: Dict[str, Any], workspace_dir: str) -> List[str]:
         
         written = []
         files = output.get("files", {})

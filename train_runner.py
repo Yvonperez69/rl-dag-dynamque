@@ -1,4 +1,6 @@
 import argparse
+import json
+import os
 import random
 from typing import Optional
 
@@ -37,6 +39,7 @@ def main() -> None:
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434", help="URL du serveur Ollama")
     parser.add_argument("--ollama-model", type=str, default="llama3.2:latest", help="Modele Ollama")
     parser.add_argument("--workdir", type=str, default=".", help="Repertoire de travail pour les fichiers generes")
+    parser.add_argument("--save-dir", type=str, default="runs", help="Dossier de sauvegarde")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -63,6 +66,30 @@ def main() -> None:
 
     for i, r in enumerate(rewards, 1):
         print(f"Episode {i}: reward={r:.3f}")
+
+    os.makedirs(args.save_dir, exist_ok=True)
+    config = {
+        "episodes": args.episodes,
+        "rollout_length": args.rollout_length,
+        "update_epochs": args.update_epochs,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "gamma": args.gamma,
+        "gae_lambda": args.gae_lambda,
+        "eps_clip": args.eps_clip,
+        "entropy_coef": args.entropy_coef,
+        "max_steps": args.max_steps,
+        "step_penalty": args.step_penalty,
+        "seed": args.seed,
+        "ollama_url": args.ollama_url,
+        "ollama_model": args.ollama_model,
+        "workdir": args.workdir,
+    }
+    with open(os.path.join(args.save_dir, "last_run.json"), "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    torch.save(agent.policy_network.state_dict(), os.path.join(args.save_dir, "ppo_policy.pt"))
+    torch.save(agent.value_network.state_dict(), os.path.join(args.save_dir, "ppo_value.pt"))
+    print(f"Saved config and weights to {args.save_dir}")
 
 
 if __name__ == "__main__":
