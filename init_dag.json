@@ -1,0 +1,22 @@
+[{
+  "dag": {
+    "nodes": [
+      {
+        "id": 0,
+        "role": "analyst"
+      },
+      {
+        "id": 1,
+        "role": "developer"
+      },
+      {
+        "id": 2,
+        "role": "tester"
+      }
+    ],
+    "edges": [
+      [0, 1],
+      [1, 2]
+    ]
+  }
+}]
