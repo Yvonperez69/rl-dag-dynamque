@@ -213,14 +213,15 @@ class AgentPPO:
 def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: int, update_epochs: int, batch_size: int = 64) -> List[float]:
     """Boucle d'entraînement simple."""
     rewards_history: List[float] = []
-    for _ in range(episodes):
+    for episode_idx in range(episodes):
 
         task = random.choice(all_tasks)
         obs = env.reset(task)
         state = obs
         episode_reward = 0.0
+        print(f"[episode {episode_idx + 1}/{episodes}] start task={task!r}")
 
-        for _ in range(rollout_length):
+        for step_idx in range(rollout_length):
             action_idx, value, log_prob = agent.select_action(state, training=True)
             next_obs, reward, done = env.step(action_idx)
 
@@ -228,11 +229,18 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
 
             episode_reward += reward
             state = next_obs
+            print(
+                f"  step={step_idx + 1}/{rollout_length} action={action_idx} "
+                f"reward={reward:.4f} done={done} "
+                f"dev={env.nb_dev_calls} analyst={env.nb_analyst_calls} reviewer={env.nb_reviewer_calls} "
+                f"quality={env.current_quality_score:.3f}"
+            )
             if done:
                 break
 
         agent.update_policy(update_epochs, batch_size=batch_size)
 
         rewards_history.append(episode_reward)
+        print(f"[episode {episode_idx + 1}/{episodes}] end total_reward={episode_reward:.4f}")
 
     return rewards_history

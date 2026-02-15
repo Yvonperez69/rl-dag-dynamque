@@ -50,9 +50,9 @@ class LLMManager:
         4. Logical coherence (0-1)
 
         Return ONLY a JSON:
-        {
-        "score": float
-        }
+        {{
+            "score": float
+        }}
 
         """
         return self.generate_text(prompt)
