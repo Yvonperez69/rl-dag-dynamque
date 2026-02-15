@@ -1,8 +1,0 @@
-digraph G {
-  rankdir=LR;
-  start [label="START"];
-  n1 [label="CODER: def return_file(path, file_content):     '''     Returns the path and file content as a JSON object.          Args:  ..."];
-  start -> n1;
-  end [label="END"];
-  n1 -> end;
-}

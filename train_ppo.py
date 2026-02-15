@@ -6,21 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from dag_env import DAGEnv
-
-
-def encode_obs(obs: Dict[str, Any]) -> np.ndarray:
-    """Encode l'observation en vecteur numérique simple."""
-    max_steps = obs["max_steps"] if obs.get("max_steps", 0) else 1
-    return np.array(
-        [
-            len(obs["graph"]),  # taille du graphe
-            obs["steps"] / max_steps,  # progression normalisée (évite /0)
-            1.0 if obs["done"] else 0.0,  # terminal ou pas
-        ],
-        dtype=np.float32,
-    )
-
+from agent_env import AgentEnv
 
 class PolicyNetwork(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int, hidden: int = 256):
@@ -54,7 +40,7 @@ class ValueNetwork(nn.Module):
 
 
 class AgentPPO:
-    def __init__(self, env: DAGEnv, lr: float, gae_lambda: float, eps_clip: float, entropy_coef: float, gamma: float = 0.99,):
+    def __init__(self, env: AgentEnv, lr: float, gae_lambda: float, eps_clip: float, entropy_coef: float, gamma: float = 0.99,):
         
         # hyperparamètres
         self.env = env
@@ -64,9 +50,6 @@ class AgentPPO:
         self.gae_lambda = gae_lambda
         self.eps_clip = eps_clip
         self.entropy_coef = entropy_coef
-        self.action_labels = ["CODER", "TESTER", "STOP"]
-        if len(self.action_labels) != env.act_dim:
-            raise ValueError("Le nombre d'actions ne correspond pas à env.act_dim.")
 
         # réseaux
         self.policy_network = PolicyNetwork(env.obs_dim, env.act_dim).to(self.device)
@@ -225,23 +208,22 @@ class AgentPPO:
         self.dones.clear()
 
 
-def run_training(env: DAGEnv, agent: AgentPPO, episodes: int, rollout_length: int, update_epochs: int, batch_size: int = 64) -> List[float]:
+def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: int, update_epochs: int, batch_size: int = 64) -> List[float]:
     """Boucle d'entraînement simple."""
     rewards_history: List[float] = []
     for _ in range(episodes):
         obs = env.reset()
-        state = encode_obs(obs)
+        state = obs
         episode_reward = 0.0
 
         for _ in range(rollout_length):
             action_idx, value, log_prob = agent.select_action(state, training=True)
-            action_label = agent.action_labels[action_idx]
-            next_obs, reward, done, info = env.step(action_label)
+            next_obs, reward, done = env.step(action_idx)
 
             agent.store_transition(state, action_idx, reward, value, log_prob, done)
 
             episode_reward += reward
-            state = encode_obs(next_obs)
+            state = next_obs
             if done:
                 break
 

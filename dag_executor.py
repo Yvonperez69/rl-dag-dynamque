@@ -380,7 +380,7 @@ def execute_dag_test(dag_input: List[Dict[str, Any]], llm_manager: Any, workspac
         print(f"[node {node_id}] summary={out.get('summary')!r} written={len(written)}")
         
         print("===================================================================" + "\n")
-        print(out['raw'])
+        
 
     return node_outputs
 
