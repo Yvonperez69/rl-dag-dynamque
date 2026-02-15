@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from dataset import all_tasks
+import random
 
 from agent_env import AgentEnv
 
@@ -212,7 +214,9 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
     """Boucle d'entraînement simple."""
     rewards_history: List[float] = []
     for _ in range(episodes):
-        obs = env.reset()
+
+        task = random.choice(all_tasks)
+        obs = env.reset(task)
         state = obs
         episode_reward = 0.0
 

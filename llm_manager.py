@@ -13,7 +13,7 @@ class LLMManager:
         self.base_url = base_url.rstrip("/")
         self.model = model
 
-    def generate_text(self, prompt: str, temperature: float = 0.0, max_tokens: int = 1200) -> str:
+    def generate_text(self, prompt: str, temperature: float = 0.2, max_tokens: int = 1200) -> str:
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -55,7 +55,7 @@ class LLMManager:
         }
 
         """
-        return prompt
+        return self.generate_text(prompt)
 
 
     def call_analyst(self, context):
@@ -101,7 +101,7 @@ class LLMManager:
     - outputs from dependencies (compact): {parents_outputs}
 
     """
-        return prompt
+        return self.generate_text(prompt)
 
     def call_developer(self, context):
 
@@ -133,7 +133,7 @@ class LLMManager:
 
         """
 
-        return prompt
+        return self.generate_text(prompt)
 
     def call_reviewer(self, context):
 
@@ -165,4 +165,4 @@ class LLMManager:
         Return only raw Python code.
         """
 
-        return prompt
+        return self.generate_text(prompt)

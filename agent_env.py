@@ -21,7 +21,7 @@ class AgentEnv:
         # trajectoire RL
         self.actions = []
         self.rewards = []
-        self.current_quality_score = 0
+        self.current_quality_score = 0.0
         self.steps = 0
         self.done = False
         self.nb_dev_calls = 0
@@ -31,11 +31,13 @@ class AgentEnv:
         self.act_dim =  4 # appeler Analyst, appeler Dev, appeler Reviewer, terminer l'épisode
         self.obs_dim = 5 # state, action, reward, nombre de steps, done
 
-    def reset(self) -> Dict[str, Any]:
-
+    def reset(self, task_description):
+        self.task_description = task_description
+        self.hist = []
         self.actions = []
         self.rewards = []
         self.steps = 0
+        self.current_quality_score = 0.0
         self.done = False
         return self._get_observation()
     
@@ -64,7 +66,7 @@ class AgentEnv:
         Retour
         - dict context: {node, parents_outputs, workspace_files, ...}
         """
-
+ 
         context = {
             "task": self.task_description,
             "hist": hist[-3:] if len(hist) >= 3 else hist,
