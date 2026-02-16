@@ -1,6 +1,6 @@
 
+from csv import writer
 from typing import Any, Dict, List, Tuple
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -68,6 +68,12 @@ class AgentPPO:
         self.values: List[float] = []
         self.log_probs: List[float] = []
         self.dones: List[bool] = []
+
+        #
+        self.last_policy_loss = 0.0
+        self.last_value_loss = 0.0
+        self.last_entropy = 0.0
+    
 
     def select_action(self, state: np.ndarray, training: bool) -> Tuple[int, float, float]:
         
@@ -209,9 +215,15 @@ class AgentPPO:
         self.log_probs.clear()
         self.dones.clear()
 
+        self.last_policy_loss = policy_loss
+        self.last_entropy = entropy
+        self.last_value_loss = value_loss
+
 
 def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: int, update_epochs: int, batch_size: int = 64) -> List[float]:
-    """Boucle d'entraînement simple."""
+    """Boucle d'entraînement"""
+
+    training_log = []
     rewards_history: List[float] = []
     for episode_idx in range(episodes):
 
@@ -224,7 +236,6 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
         for step_idx in range(rollout_length):
             action_idx, value, log_prob = agent.select_action(state, training=True)
             next_obs, reward, done = env.step(action_idx)
-
             agent.store_transition(state, action_idx, reward, value, log_prob, done)
 
             episode_reward += reward
@@ -239,8 +250,23 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
                 break
 
         agent.update_policy(update_epochs, batch_size=batch_size)
-
+        
         rewards_history.append(episode_reward)
         print(f"[episode {episode_idx + 1}/{episodes}] end total_reward={episode_reward:.4f}")
+
+        training_log.append({
+            "episode": episode_idx,
+            "total_reward": episode_reward,
+            "final_quality": env.current_quality_score,
+            "episode_length": step_idx + 1,
+            "dev_calls": env.nb_dev_calls,
+            "analyst_calls": env.nb_analyst_calls,
+            "reviewer_calls": env.nb_reviewer_calls,
+            "policy_loss": agent.last_policy_loss,
+            "value_loss": agent.last_value_loss,
+            "entropy": agent.last_entropy
+            })
+
+    writer.close()
 
     return rewards_history

@@ -37,6 +37,9 @@ class AgentEnv:
         self.hist = []
         self.actions = []
         self.rewards = []
+        self.nb_dev_calls = 0
+        self.nb_analyst_calls = 0
+        self.nb_reviewer_calls = 0
         self.steps = 0
         self.current_quality_score = 0.0
         self.done = False
@@ -174,13 +177,14 @@ class AgentEnv:
     def step(self, action):
         
         reward = 0.1 # reward de base
-
+        alpha = 0.8
+        beta = 0.2
         if action == 3:
             # On termine et on score l'état actuel
-            done = True
             self.steps += 1
-            
-            
+            reward = alpha*self.current_quality_score + beta*(1 - self.steps / self.max_steps)
+            self.done = True
+
             return self._get_observation(), reward, self.done
 
         if action == 0: # ANALYSTE

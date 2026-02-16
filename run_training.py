@@ -26,13 +26,13 @@ def main():
     rewards = run_training(
         env=env,
         agent=agent,
-        episodes=200,
-        rollout_length=20,
+        episodes=10,
+        rollout_length=10,
         update_epochs=4,
         batch_size=32
     )
 
-    torch.save(agent.policy.state_dict(), "policy.pt")
+    torch.save(agent.policy_network.state_dict(), "policy.pt")
 
     print("Training finished.")
     print("Final reward:", rewards[-1])
@@ -40,3 +40,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+#spap monsieur yvon hihihi suuuu
