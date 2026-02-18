@@ -1,11 +1,16 @@
 """Env pour le dag dynamique avec RL."""
 import os
-import subprocess
+import py_compile
 import json
 import numpy as np
 from typing import Any, Dict, List
+import sys
+from pathlib import Path
+
+from sympy import beta
 from llm_manager import LLMManager
 import re
+import subprocess
 
 
 class AgentEnv:
@@ -23,13 +28,15 @@ class AgentEnv:
         self.actions = []
         self.rewards = []
         self.current_quality_score = 0.0
+        self.nb_test = 0 # 1 si le test réussi et 0 sinon
         self.steps = 0
         self.done = False
+        self.nb_tester_calls = 0
         self.nb_dev_calls = 0
         self.nb_analyst_calls = 0
         self.nb_reviewer_calls = 0
 
-        self.act_dim =  4 # appeler Analyst, appeler Dev, appeler Reviewer, terminer l'épisode
+        self.act_dim =  5 # appeler Analyst, appeler Dev, appeler Reviewer, appeler tester, terminer l'épisode
         self.obs_dim = 5 # state, action, reward, nombre de steps, done
 
     def reset(self, task_description):
@@ -40,6 +47,7 @@ class AgentEnv:
         self.nb_dev_calls = 0
         self.nb_analyst_calls = 0
         self.nb_reviewer_calls = 0
+        self.nb_tester_calls = 0
         self.steps = 0
         self.current_quality_score = 0.0
         self.done = False
@@ -65,10 +73,9 @@ class AgentEnv:
         Paramètres
         - historique 
         - workspace_dir: dossier où le code est généré (pour snapshot fichiers)
-        - max_parent_items: limite pour éviter un prompt énorme
 
         Retour
-        - dict context: {node, parents_outputs, workspace_files, ...}
+        - dict context: {task, hist, workspace_dir, workspace_files, ...}
         """
  
         context = {
@@ -174,15 +181,102 @@ class AgentEnv:
         except Exception:
             return 0.0
 
+    def check_syntax(self, folder):
+        try:
+            for root, _, files in os.walk(folder):
+                for f in files:
+                    if f.endswith(".py"):
+                        path = os.path.join(root, f)
+                        py_compile.compile(path, doraise=True)
+            return True
+        except py_compile.PyCompileError:
+            return False
+
+        
+    def run_tests(self, workdir):
+        workdir_path = Path(workdir)
+        if not workdir_path.exists():
+            return False
+
+        # 1) Run every discovered pytest file (Windows-safe: python -m pytest)
+        test_files = sorted(
+            [str(p.relative_to(workdir_path)) for p in workdir_path.rglob("test_*.py")]
+            + [str(p.relative_to(workdir_path)) for p in workdir_path.rglob("*_test.py")]
+        )
+        # Deduplicate while preserving order
+        test_files = list(dict.fromkeys(test_files))
+
+        if test_files:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", *test_files],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+
+        # 2) Fallback: run a likely entry script if no tests are present
+        candidates = ["main.py", "solution.py", "app.py"]
+        for name in candidates:
+            path = workdir_path / name
+            if path.exists():
+                result = subprocess.run(
+                    [sys.executable, str(path)],
+                    cwd=workdir,
+                    capture_output=True,
+                    text=True,
+                )
+                return result.returncode == 0
+
+        # 3) Last fallback: if exactly one Python file exists, run it
+        py_files = sorted(workdir_path.rglob("*.py"))
+        if len(py_files) == 1:
+            result = subprocess.run(
+                [sys.executable, str(py_files[0])],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+
+        return False
+
+
+
+    def compute_reward(self, context):
+        reward = 0.1 # reward de base 
+
+        workspace_dir = context.get("workspace_dir")
+
+        # Reward basé sur l'EXECUTION : nb_test passé, temps d'éxécution, compilation
+        reward_execution = 0.0
+        if self.check_syntax(workspace_dir) :
+            reward_execution += 1.0
+            if self.nb_tester_calls > 0 :
+                self.nb_test = 1 if self.run_tests(workspace_dir) else 0
+                reward_execution += self.nb_test
+
+        # temps d'exec
+
+        reward += reward_execution
+
+        reward -= 0.01 # step penalty
+
+        # appel au llm juge
+        prev_q = self.current_quality_score
+        reward_llm = self.extract_score_from_llm(self.llm.call_judge(context))
+        reward += (reward_llm - prev_q)/10 #On normalise la reward
+        self.current_quality_score  = reward_llm
+        return reward
+
     def step(self, action):
         
-        reward = 0.1 # reward de base
-        alpha = 0.8
-        beta = 0.2
-        if action == 3:
+        reward = 0.0
+
+        if action == 4:
             # On termine et on score l'état actuel
+
             self.steps += 1
-            reward = alpha*self.current_quality_score + beta*(1 - self.steps / self.max_steps)
             self.done = True
 
             return self._get_observation(), reward, self.done
@@ -216,18 +310,23 @@ class AgentEnv:
             written =  self.apply_output(out, self.workdir)
 
             self.nb_reviewer_calls += 1
+        
+        if action == 3: # TESTER
+
+            context = self.build_context(self.hist, self.workdir)
+            out = self.llm.call_tester(context)
+            #on tiens un historique
+            self.hist.append({"action": action, "output": out})
+
+            written =  self.apply_output(out, self.workdir)
+
+            self.nb_tester_calls += 1
 
         #On calcul la reward
 
-        self.steps += 1 
-        reward -= 0.01 # step penalty
-
-        # appel au llm juge
-        prev_q = self.current_quality_score
-        reward_llm = self.extract_score_from_llm(self.llm.call_judge(context))
-        reward += (reward_llm - prev_q)/10 #On normalise la reward
-        self.current_quality_score  = reward_llm
-
+        self.steps += 1
+        reward = self.compute_reward(context)
+        
         return self._get_observation(), reward, self.done
         
 

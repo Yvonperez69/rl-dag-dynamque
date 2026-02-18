@@ -1,6 +1,7 @@
 import requests
 from typing import Dict, Any, List
 import os  
+from requests.exceptions import ReadTimeout, RequestException
 
 class LLMManager:
     """
@@ -22,17 +23,28 @@ class LLMManager:
             # Ollama n'utilise pas toujours max_tokens selon versions/modèles, mais ça ne gêne pas.
             "max_tokens": max_tokens,
         }
-        r = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("response", "")
+        try:
+            r = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=60
+            )
+            r.raise_for_status()
+            return r.json()["response"]
+
+        except ReadTimeout:
+            print("⚠️ LLM timeout — returning fallback response")
+            return "SCORE: 0"
+
+        except RequestException as e:
+            print(f"⚠️ LLM error: {e}")
+            return "SCORE: 0"
     
     def call_judge(self, context):
 
         hist = context.get("hist", [])
         task = context.get("task", "")
         workspace_files = context.get("workspace_files", [])
-        parents_outputs = context.get("parents_outputs", [])
 
         prompt = f"""
         Evaluate the final solution.
@@ -41,7 +53,6 @@ class LLMManager:
         - history : {hist}
         - global task description : {task}
         - workspace files (paths only): {workspace_files}
-        - outputs from dependencies (compact): {parents_outputs}
 
         Criteria:
         1. Correctness (0-4)
@@ -57,13 +68,35 @@ class LLMManager:
         """
         return self.generate_text(prompt)
 
+    def call_tester(self, context):
+        hist = context.get("hist", [])
+        task = context.get("task", "")
+        workspace_files = context.get("workspace_files", [])
+
+        prompt = f"""
+        You are an agent who generates tests.
+
+        Your task:
+        - Understand the provided solution, which is all the code in the workspace files except "test_solution.py".
+        - create a script "test_solution.py" that tests the solution against edge cases.
+
+        AVAILABLE CONTEXT in {context}:
+        - history : {hist}
+        - global task description : {task}
+        - workspace files (paths only): {workspace_files}
+
+        Do NOT explain.
+        Return only raw Python code.
+        return a script named "test_solution.py" and nothing else.
+        """
+
+        return self.generate_text(prompt)
 
     def call_analyst(self, context):
 
         hist = context.get("hist", [])
         task = context.get("task", "")
         workspace_files = context.get("workspace_files", [])
-        parents_outputs = context.get("parents_outputs", [])
 
         prompt = f"""
     SYSTEM:
@@ -98,7 +131,6 @@ class LLMManager:
     - history : {hist}
     - global task description : {task}
     - workspace files (paths only): {workspace_files}
-    - outputs from dependencies (compact): {parents_outputs}
 
     """
         return self.generate_text(prompt)
@@ -108,7 +140,6 @@ class LLMManager:
         hist = context.get("hist", [])
         task = context.get("task", "")
         workspace_files = context.get("workspace_files", [])
-        parents_outputs = context.get("parents_outputs", [])
 
         prompt = f"""
         You are an expert Python developer.
@@ -128,7 +159,6 @@ class LLMManager:
         - history : {hist}
         - global task description : {task}
         - workspace files (paths only): {workspace_files}
-        - outputs from dependencies (compact): {parents_outputs}
         Return ONLY valid Python code.
 
         """
@@ -140,7 +170,6 @@ class LLMManager:
         hist = context.get("hist", [])
         task = context.get("task", "")
         workspace_files = context.get("workspace_files", [])
-        parents_outputs = context.get("parents_outputs", [])
 
         prompt = f"""
         You are a strict senior code reviewer.
@@ -159,7 +188,6 @@ class LLMManager:
         - history : {hist}
         - global task description : {task}
         - workspace files (paths only): {workspace_files}
-        - outputs from dependencies (compact): {parents_outputs}
 
         Do NOT explain.
         Return only raw Python code.

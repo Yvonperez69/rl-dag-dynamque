@@ -12,13 +12,13 @@ def main():
     
     training_dir = "training"
     os.makedirs(training_dir, exist_ok=True)
-    env = AgentEnv(llm, max_steps=30, workdir=training_dir)
+    env = AgentEnv(llm, max_steps=50, workdir=training_dir)
     
     agent = AgentPPO(
         env=env,
-        lr=3e-4,
+        lr=1e-4,
         gae_lambda=0.95,
-        eps_clip=0.2,
+        eps_clip=0.15,
         entropy_coef=0.01,
         gamma=0.99
     )
@@ -26,9 +26,9 @@ def main():
     rewards = run_training(
         env=env,
         agent=agent,
-        episodes=10,
+        episodes=50,
         rollout_length=10,
-        update_epochs=4,
+        update_epochs=10,
         batch_size=32
     )
 

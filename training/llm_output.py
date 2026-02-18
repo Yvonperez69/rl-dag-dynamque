@@ -1,29 +1,29 @@
-class Stack:
-    def __init__(self):
-        self.stack = []
+import os
+from collections import Counter
 
-    def push(self, value):
-        self.stack.append(value)
+def count_word_frequency(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            text = file.read().lower()
+            words = text.split()
+            if not words or len(words) == 1: # Check for empty list of words and single word in it
+                return {}  # Return an empty dictionary instead of None
+            else:
+                return Counter(words)
+    except FileNotFoundError:
+        print(f"File {file_path} not found.")
+        return {}
 
-    def pop(self):
-        if not self.is_empty():
-            return self.stack.pop()
-        else:
-            raise IndexError("Cannot pop from an empty stack")
+def main():
+    file_path = os.path.join(os.getcwd(), 'text_file.txt')
+    if not os.path.exists(file_path):  # Check if the file exists before opening it
+        print(f"File {file_path} does not exist.")
+        return
 
-    def peek(self):
-        if not self.is_empty():
-            return self.stack[-1]
-        else:
-            raise IndexError("Cannot peek into an empty stack")
+    word_freq = count_word_frequency(file_path)
+    if word_freq:
+        for word, freq in sorted(word_freq.items(), key=lambda x: x[1], reverse=True):
+            print(f"{word}: {freq}")
 
-    def is_empty(self):
-        return len(self.stack) == 0
-
-# Example usage:
-stack = Stack()
-stack.push(1)
-stack.push(2)
-print(stack.peek())  # prints: 2
-print(stack.pop())   # prints: 2
-print(stack.is_empty())  # prints: False
+if __name__ == "__main__":
+    main()

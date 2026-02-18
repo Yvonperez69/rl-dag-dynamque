@@ -1,5 +1,5 @@
 
-from csv import writer
+import pandas as pd
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import torch
@@ -243,7 +243,7 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
             print(
                 f"  step={step_idx + 1}/{rollout_length} action={action_idx} "
                 f"reward={reward:.4f} done={done} "
-                f"dev={env.nb_dev_calls} analyst={env.nb_analyst_calls} reviewer={env.nb_reviewer_calls} "
+                f"dev={env.nb_dev_calls} analyst={env.nb_analyst_calls} reviewer={env.nb_reviewer_calls}, tester={env.nb_tester_calls} "
                 f"quality={env.current_quality_score:.3f}"
             )
             if done:
@@ -267,6 +267,6 @@ def run_training(env: AgentEnv, agent: AgentPPO, episodes: int, rollout_length: 
             "entropy": agent.last_entropy
             })
 
-    writer.close()
-
+    df = pd.DataFrame(training_log)
+    df.to_csv("training_metrics.csv", index=False)
     return rewards_history
